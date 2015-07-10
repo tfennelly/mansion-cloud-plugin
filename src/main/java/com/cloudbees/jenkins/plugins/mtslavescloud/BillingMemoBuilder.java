@@ -29,6 +29,7 @@ import hudson.matrix.MatrixBuild;
 import hudson.model.AbstractBuild;
 import hudson.model.Cause;
 import hudson.model.Node;
+import hudson.model.Run;
 import hudson.model.listeners.RunListener;
 import hudson.slaves.NodeProperty;
 import net.sf.json.JSONArray;
@@ -48,22 +49,29 @@ import java.util.logging.Logger;
  *
  */
 @Extension
-public class BillingMemoBuilder extends RunListener<AbstractBuild> {
+public class BillingMemoBuilder extends RunListener<Run> {
 
     @Override
-    public void onFinalized(AbstractBuild run) {
-        Node node = run.getBuiltOn();
-        if (node instanceof MansionSlave) {
-            BuildHistory history = node.getNodeProperties().get(BuildHistory.class);
-            if (history == null) {
-                history = new BuildHistory();
+    public void onFinalized(Run run) {
+        if (run instanceof AbstractBuild) {
+            Node node = ((AbstractBuild)run).getBuiltOn();
+
+            if (node instanceof MansionSlave) {
+                BuildHistory history = node.getNodeProperties().get(BuildHistory.class);
+                if (history == null) {
+                    history = new BuildHistory();
+                }
+                history.add(run);
+                try {
+                    node.getNodeProperties().replace(history);
+                } catch (IOException x) {
+                    Logger.getLogger(BillingMemoBuilder.class.getName()).log(Level.WARNING, null, x);
+                }
             }
-            history.add(run);
-            try {
-                node.getNodeProperties().replace(history);
-            } catch (IOException x) {
-                Logger.getLogger(BillingMemoBuilder.class.getName()).log(Level.WARNING, null, x);
-            }
+        } else {
+            // TODO: 
+            // Need to do something specific here for WorkflowRun. They can have
+            // multiple nodes/workspaces (Vs just one for an AbstractBuild).
         }
     }
 
@@ -73,7 +81,7 @@ public class BillingMemoBuilder extends RunListener<AbstractBuild> {
     public static class BuildHistory extends NodeProperty<MansionSlave> {
         private JSONArray builds = new JSONArray();
 
-        public void add(AbstractBuild run) {
+        public void add(Run run) {
             String n = run.getClass().getName();
             if (!n.equals("hudson.maven.MavenBuild") &&  ! (run instanceof MatrixBuild)) {
                 JSONObject build = new JSONObject();
